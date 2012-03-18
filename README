@@ -1,0 +1,17 @@
+Script parsing school performance data available from the UK's Department of Education's website and mapping the results using Google Maps.
+
+After geocoding the school's postcode, a marker is placed on the map representing the school's performance in English and Math. Additional key values are displayed in a pop up.
+
+The entire process is offline. Geocoding can be done in a separate step and cached in a local file for future reuse without abusing Google's API limitations. Downloaded CSV files are read from a dedicated directory. The result is represented as JSON objects in a separate Javascript file containing basic code to hook up with Google Maps and placing markers. This in turn is included from an HTML file.
+
+Notes:
+*There is certainly potential for refactoring and additional customization.
+*You may need to generate and add you own Google API key to the html file.
+*Fetch files from the "Download all" columns of the page below. The script has been used with "KS2", KS4 and KS5 are untested.
+
+Sample invocation:
+  ./lookup.py  -d data/ -o london.js -l geocode_cache 
+Data files
+  http://www.education.gov.uk/schools/performance/download_data.html
+Homepage Department of Education - School Performance
+  http://www.education.gov.uk/schools/performance/
