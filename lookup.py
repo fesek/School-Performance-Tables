@@ -9,142 +9,34 @@ import string
 import sys
 import time
 
+DEBUG = 0
+LOCATION_DICT_CHANGED = False
 
 def geocode(_postcode):
   postcode = string.replace(_postcode," ", "+")
   site = "maps.googleapis.com"
   page = "/maps/api/geocode/json?address=" + postcode + ",+UK&sensor=false"
   url = site + page
-  #print page
 
   conn = httplib.HTTPConnection(site)
   conn.request("GET", page)
   rl = conn.getresponse()
-  #print rl.status, rl.reason
   data = rl.read()
-  #print data
 
   datajson = simplejson.loads(data)
   loc = datajson["results"][0]["geometry"]["location"]
   return loc
 
-def resolve_nftype(type, urn ):
-  if type == "20":
-    return "Sponsored Academy"
-  if type == "21":
-    return "Community School"
-  elif type == "22":
-    return "Voluntary Aided School"
-  elif type == "23":
-    return "Voluntary Controlled School"
-  elif type == "24":
-    return "Foundation School"
-  elif type == "25":
-    return "City Technology College"
-  elif type == "26":
-    return "Community Special School"
-  elif type == "27":
-    return "Foundation Special School"
-  elif type == "28":
-    return "Non-Maintained Special School"
-  elif type == "30":
-    return "Independent School"
-  elif type == "31":
-    return "Further Education Sector Institution"
-  elif type == "35":
-    return "Sixth Form Centre"
-  elif type == "48":
-    return "Other Independent Special School"
-  elif type == "51":
-    return "Academy"
-  elif type == "52":
-    return "Free School"
-  elif type == "311":
-    return "Agriculture and Horticulture College"
-  elif type == "313":
-    return "General Further Education College"
-  elif type == "315":
-    return "Sixth Form College"
-  elif type == "318":
-    return "Specialist Designated College"
-  elif type == "319":
-    return "Tertiary College"
-  else:
-    print urn
-    print type
-    return type
 
-def resolve_reldenom(type, urn ):
-  if type == "0":
-    return "Does not apply"
-  if type == "2":
-    return "Church of England"
-  if type == "3":
-    return "Roman Catholic"
-  if type == "4":
-    return "Methodist"
-  if type == "5":
-    return "Jewish"
-  if type == "6":
-    return "None"
-  if type == "7":
-    return "Muslim"
-  if type == "8":
-    return "Seventh Day Adventist"
-  if type == "15":
-    return "Christian"
-  if type == "21":
-    return "Sikh"
-  if type == "22":
-    return "Greek Orthodox"
-  if type == "23":
-    return "Unitarian"
-  if type == "25":
-    return "Hindu"
-  if type == "28":
-    return "Inter- / non- denominational"
-  if type == "29":
-    return "Multi-faith"
-  if type == "99":
-    return "Unknown"
-  else:
-    print urn
-    print type
-    return type
-
-def generate_code_begin(file):
+def generate_data_begin(file):
   file.write('''
-
-// List of markers
-var g_markers = [];
-
-// Singleton for all markers. Only content will be changed
-var g_infoWindow = null;
-
-function generateInfoWindowContent(marker)
+function build_array(map)
 {
-  return marker.title;
-}
-
-function initialize() {
-  // Setup map and centre
-  var options = {
-    center: new google.maps.LatLng(51.5081290, -0.1280050),
-    zoom: 12,
-    mapTypeId: google.maps.MapTypeId.ROADMAP
-  };
-  var map = new google.maps.Map(document.getElementById("map_canvas"),
-    options);
-
-
-  // Setup singleton info window for all markers
-  var g_infoWindow = new google.maps.InfoWindow({ });
-
 ''')
 
-def generate_code_marker_begin(file):
+def generate_data_marker_begin(file):
   file.write('''
-  g_markers =
+  markers =
   [
 ''')
 
@@ -170,7 +62,7 @@ def get_marker_icon(value):
   return "img/" + image
 
 
-def generate_code_marker(file, item, icon):
+def generate_data_marker(file, item, icon):
   file.write('''
       {
         c :
@@ -203,9 +95,64 @@ def generate_code_marker(file, item, icon):
 ''')
 
 
-def generate_code_marker_end(file):
+def generate_data_marker_end(file):
   file.write('''
   ];
+''')
+
+
+def generate_data_end(file):
+  file.write('''
+  return markers;
+
+}
+''')
+
+def generate_data(filename):
+  file = open(filename, "w")
+  generate_data_begin(file)
+  generate_data_marker_begin(file)
+  for urn in school_dict:
+    item = school_dict[urn]
+    if (option.ks == 2):
+      metric = item["KS2_11.PTENGMATX"]
+    else:
+      metric = item["KS4_11.PTAC5EM"]
+    generate_data_marker(file, item, get_marker_icon(metric))
+  generate_data_marker_end(file)
+
+  generate_data_end(file)
+
+def generate_glue(filename):
+  file = open(filename, "w")
+  file.write('''
+
+// List of markers
+var g_markers = [];
+
+// Singleton for all markers. Only content will be changed
+var g_infoWindow = null;
+
+function generateInfoWindowContent(marker)
+{
+  return marker.title;
+}
+
+function initialize()
+{
+  // Setup map and centre
+  var options = {
+    center: new google.maps.LatLng(51.5081290, -0.1280050),
+    zoom: 12,
+    mapTypeId: google.maps.MapTypeId.ROADMAP
+  };
+  var map = new google.maps.Map(document.getElementById("map_canvas"),
+    options);
+
+  // Setup singleton info window for all markers
+  g_infoWindow = new google.maps.InfoWindow({ });
+
+  g_markers = build_array(map);
 
   for (i in g_markers)
   {
@@ -231,42 +178,54 @@ def generate_code_marker_end(file):
       g_infoWindow.open(map, this);
     });
   }
-''')
-
-
-def generate_code_end(file):
-  file.write('''
 }
 ''')
 
-def generate_code(filename):
+def generate_html(filename, js1, js2):
   file = open(filename, "w")
-  generate_code_begin(file)
-  generate_code_marker_begin(file)
-  for urn in school_dict:
-    item = school_dict[urn]
-    if "KS2_11.PTENGMATX" not in item:
-      continue
-#    generate_code_marker(file, item["lat"], item["lng"], item["SCHNAME"],
-#      get_marker_icon(item["PTENGMATX"]))
-    generate_code_marker(file, item, get_marker_icon(item["KS2_11.PTENGMATX"]))
-  generate_code_marker_end(file)
+  file.write('''
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+    <style type="text/css">
+      html { height: 100%% }
+      body { height: 100%%; margin: 0; padding: 0 }
+    </style>
 
-  generate_code_end(file)
+    <script type="text/javascript"
+      src="http://maps.googleapis.com/maps/api/js?sensor=false">
+    </script>
 
+    <script type="text/javascript"
+      src="./%s">
+    </script>
 
+    <script type="text/javascript"
+      src="./%s">
+    </script>
+
+  </head>
+  <body onload="initialize()">
+    <div id="map_canvas" style="width:100%%; height:100%%"></div>
+  </body>
+</html>
+
+''' % (js1, js2))
 
 
 parser = OptionParser()
 parser.add_option("-d", "--source-dir", action="store", help="Director containing data file")
 parser.add_option("-g", "--geocode-only", action="store_true", help="Geocode postcodes and write to file")
-parser.add_option("-o", "--output", action="store", help="File to store results")
+parser.add_option("-o", "--output", action="store", help="Filename to store results")
 parser.add_option("-l", "--location-map", action="store", help="Cached geo codes")
+parser.add_option("-k", "--ks", type="int", action="store", help="Key Stage 2 or 4")
 
 (option, args) = parser.parse_args()
 
-#print option
-#print args
+if (DEBUG):
+  print "Options: " . option
+  print "Arguments: " . args
 
 if option.source_dir == None:
   print "No input dirctory"
@@ -277,28 +236,44 @@ if option.output == None:
 if not option.geocode_only and option.location_map== None:
   print "Neither geocoding option nor input file"
   sys.exit(0)
+if option.ks == None:
+  print "Key stage number missing"
+  sys.exit(0)
 
 
 
 location_dict = {}
 if option.location_map != None:
-#  location_file = open(option.location_map, "r")
   location_dict = simplejson.load(open(option.location_map, "r"))
 
 school_dict = {}
 
-output_values = ({
-  "L.URN" : "URN",
-  "L.RELDENOM" : "Denomination",
-  "KS2_11.TOTPUPS"  : "# Pupils",
-  "KS2_11.PTENGMATX" : "Level 4 in Math and English",
-  "ABS_11.PERCTOT"   : "Overall absence",
-  "CENSUS_11.TSENSAP" : "# Pupils on SEN or School Action Plus",
-  "CENSUS_11.PNUMEAL" : "% Pupils with English not as First Language",
-  "CENSUS_11.PNUMFSM" : "% Pupils on Free School Meals",
-  "SWF_11.RATPUPTEA" : "Pupil:Teacher Ratio",
-  "L.NFTYPE" : "School Type",
-})
+if (option.ks == 2):
+  output_values = ({
+    "L.URN" : "URN",
+    "L.RELDENOM" : "Denomination",
+    "KS2_11.TOTPUPS"  : "# Pupils",
+    "KS2_11.PTENGMATX" : "Level 4 in Math and English",
+    "ABS_11.PERCTOT"   : "Overall absence",
+    "CENSUS_11.TSENSAP" : "# Pupils on SEN or School Action Plus",
+    "CENSUS_11.PNUMEAL" : "% Pupils with English not as First Language",
+    "CENSUS_11.PNUMFSM" : "% Pupils on Free School Meals",
+    "SWF_11.RATPUPTEA" : "Pupil:Teacher Ratio",
+    "L.NFTYPE" : "School Type",
+  })
+else:
+  output_values = ({
+    "L.URN" : "URN",
+    "L.RELDENOM" : "Denomination",
+    "KS4_11.TOTPUPS"  : "# Pupils",
+    "KS4_11.PTAC5EM" : "5+ A*-C GCSEs including English and maths",
+    "ABS_11.PERCTOT"   : "Overall absence",
+    "CENSUS_11.TSENSAP" : "# Pupils on SEN or School Action Plus",
+    "CENSUS_11.PNUMEAL" : "% Pupils with English not as First Language",
+    "CENSUS_11.PNUMFSM" : "% Pupils on Free School Meals",
+    "SWF_11.RATPUPTEA" : "Pupil:Teacher Ratio",
+    "L.NFTYPE" : "School Type",
+  })
 
 dir = option.source_dir
 dirList = os.listdir(dir)
@@ -327,7 +302,8 @@ for urn in school_dict:
 
     postcode = school["L.POSTCODE"]
 
-    if option.geocode_only or postcode not in location_dict:
+    #if option.geocode_only or postcode not in location_dict:
+    if postcode not in location_dict:
       print "Get location for " + postcode
       # throttling
       if count % 10 == 0:
@@ -335,27 +311,52 @@ for urn in school_dict:
         time.sleep(2)
       count = count + 1
       # perform lookup and store
-#      print postcode
+      if (DEBUG):
+        print postcode
       location = geocode(postcode)
-#      print location
+      if (DEBUG):
+        print location
+      LOCATION_DICT_CHANGED = True
       location_dict[postcode] = location
     if not option.geocode_only:
       # get coordinates from locations map and generate web output
-      PTENGMATX = string.replace(school["KS2_11.PTENGMATX"], '%', '')
-      PTENGMATX = int(PTENGMATX) if len(PTENGMATX) > 0 and PTENGMATX != "SUPP" else 0
-      school["KS2_11.PTENGMATX"] = PTENGMATX
-      school["L.NFTYPE"] = resolve_nftype(school["L.NFTYPE"], urn)
-      school["L.RELDENOM"] = resolve_reldenom(school["L.RELDENOM"], urn)
+      if (option.ks == 2):
+        metric = string.replace(school["KS2_11.PTENGMATX"], '%', '')
+        if len(metric) > 0 and metric != "SUPP":
+          metric = int(metric)
+        else:
+          0
+        school["KS2_11.PTENGMATX"] = metric
+      else:
+        metric = string.replace(school["KS4_11.PTAC5EM"], '%', '')
+        if len(metric) > 0 and metric != "SUPP" and metric != "NE":
+          metric = int(metric)
+        else:
+          0
+        school["KS4_11.PTAC5EM"] = metric
       school["loc_lat"] = location_dict[postcode]["lat"]
       school["loc_lng"] = location_dict[postcode]["lng"]
-      #print school
+      if (DEBUG):
+        print school
 
 
 # save location maps to file
-location_file = open(option.location_map, "w")
-simplejson.dump(location_dict, location_file, indent = 2)
+if (LOCATION_DICT_CHANGED):
+  location_file = open(option.location_map, "w")
+  simplejson.dump(location_dict, location_file, indent = 2, sort_keys = True)
 
 if not option.geocode_only:
   # Generate Javascript with data
-  generate_code(option.output);
+  data_filename = option.output + "_data.js"
+  html_filename = option.output + ".html"
+  glue_filename = option.output + ".js"
+
+  print "Generating ", data_filename
+  generate_data(data_filename)
+
+  print "Generating ", glue_filename
+  generate_glue(glue_filename)
+
+  print "Generating ", html_filename
+  generate_html(html_filename, data_filename, glue_filename)
 
