@@ -12,11 +12,12 @@ import time
 DEBUG = 0
 LOCATION_DICT_CHANGED = False
 
-class Location:
+class Locations:
   def __init__(self, filename):
     self.cache = {}
     self.filename = filename
     self.changed = False;
+    self.count = 0
     if self.filename:
       try:
         self.cache = simplejson.load(open(self.filename, "r"))
@@ -30,11 +31,11 @@ class Location:
 
   def lookup(self, postcode):
     if postcode in self.cache:
-      return [self.cache[postcode], True]
+      return self.cache[postcode]
     else:
       self.changed = True
       print "Get location for " + postcode
-      postcode = string.replace(_postcode," ", "+")
+      postcode = string.replace(postcode," ", "+")
       site = "maps.googleapis.com"
       page = "/maps/api/geocode/json?address=" + postcode + ",+UK&sensor=false"
       url = site + page
@@ -47,12 +48,19 @@ class Location:
       datajson = simplejson.loads(data)
       loc = datajson["results"][0]["geometry"]["location"]
       self.cache[postcode] = loc
-      return [loc, False]
+
+      # throttling
+      self.count = self.count + 1
+      if self.count % 10 == 0:
+        print "timeout"
+        time.sleep(2)
+
+      return loc
 
 
 class Institutions:
-  def __init__(self, location, sourcedir):
-    self.location = location
+  def __init__(self, locations, sourcedir):
+    self.locations = locations
     self.sourcedir = sourcedir
     self.cache = {}
     pass
@@ -82,21 +90,66 @@ class Institutions:
           self.cache[urn][key] = rec[key]
 
   def geocode(self):
-    count = 0
     for urn in self.cache:
-
       inst = self.cache[urn];
       postcode = inst["L.POSTCODE"]
 
-      #if option.geocode_only or postcode not in location_dict:
-      res = location.lookup(postcode)
+      res = locations.lookup(postcode)
 
-      # throttling
-      if not res[1]:
-        if count % 10 == 0:
-          print "timeout"
-          time.sleep(2)
-        count = count + 1
+  def generate_output(self):
+    data_filename = self.output + "_data.js"
+    html_filename = self.output + ".html"
+    glue_filename = self.output + ".js"
+
+    print "Generating ", data_filename
+    self.generate_data(data_filename)
+    print "Generating ", glue_filename
+    self.generate_glue(glue_filename)
+    print "Generating ", html_filename
+    self.generate_html(html_filename, data_filename, glue_filename)
+
+  def generate_data(self, filename):
+    file = open(filename, "w")
+    self.generate_data_begin(file)
+    self.generate_data_marker_begin(file)
+    for urn in self.cache:
+      item = self.cache[urn]
+      self.generate_data_marker(file, item, self.get_marker_icon(item["__metric__"]))
+    self.generate_data_marker_end(file)
+    self.generate_data_end(file)
+
+  def generate_data_marker(self, file, item, icon):
+    file.write('''
+        {
+          c :
+          {
+            position: new google.maps.LatLng(%f, %f),
+            map: map,
+            title: "%s",
+            icon: "%s"
+          },
+          d :
+          [
+''' % (item["loc_lat"], item["loc_lng"], item["L.SCHNAME"], icon))
+
+    for i in self.output_values:
+      value = ""
+      if i in item:
+        value = item[i]
+      else:
+        value = "No data"
+      file.write('''
+            {
+              name : "%s",
+              value : "%s"
+            },
+''' % (self.output_values[i], value))
+
+    file.write('''
+          ],
+        },
+''')
+
 
   def generate_data_begin(self, file):
     file.write('''
@@ -109,30 +162,6 @@ class Institutions:
     markers =
     [
   ''')
-
-  def get_marker_icon(self, value):
-    image = ""
-    if value == 0:
-      image = "na.png"
-    elif value >= 95:
-      image = "1.png"
-    elif value >= 90:
-      image = "2.png"
-    elif value >= 85:
-      image = "3.png"
-    elif value >= 80:
-      image = "4.png"
-    elif value >= 75:
-      image = "5.png"
-    elif value >= 70:
-      image = "6.png"
-    else:
-      image = "50.png"
-
-    return "img/" + image
-
-
-
 
   def generate_data_marker_end(self, file):
     file.write('''
@@ -239,8 +268,8 @@ function initialize()
 
 
 class Schools(Institutions):
-  def __init__(self, location, sourcedir, output, ks):
-    Institutions.__init__(self, location, sourcedir)
+  def __init__(self, locations, sourcedir, output, ks):
+    Institutions.__init__(self, locations, sourcedir)
     self.output = output
     self.ks = ks
     if (self.ks == 2):
@@ -277,88 +306,49 @@ class Schools(Institutions):
       # get coordinates from locations map and generate web output
       for urn in self.cache:
         school = self.cache[urn]
+        metric = 0
         if (self.ks == 2):
           metric = string.replace(school["KS2_11.PTENGMATX"], '%', '')
           if len(metric) > 0 and metric != "SUPP":
             metric = int(metric)
           else:
-            0
-          school["KS2_11.PTENGMATX"] = metric
+            metric = 0
         else:
           metric = string.replace(school["KS4_11.PTAC5EM"], '%', '')
           if len(metric) > 0 and metric != "SUPP" and metric != "NE":
             metric = int(metric)
           else:
-            0
-          school["KS4_11.PTAC5EM"] = metric
+            metric = 0
+        school["__metric__"] = metric
 
         postcode = school["L.POSTCODE"]
-        loc = self.location.lookup(postcode)[0]
+        loc = self.locations.lookup(postcode)
         school["loc_lat"] = loc["lat"]
         school["loc_lng"] = loc["lng"]
         if (DEBUG):
           print school
 
-  def generate_output(self):
-    data_filename = self.output + "_data.js"
-    html_filename = self.output + ".html"
-    glue_filename = self.output + ".js"
+  def get_marker_icon(self, value):
+    image = ""
+    if value == 0:
+      image = "na.png"
+    elif value >= 95:
+      image = "1.png"
+    elif value >= 90:
+      image = "2.png"
+    elif value >= 85:
+      image = "3.png"
+    elif value >= 80:
+      image = "4.png"
+    elif value >= 75:
+      image = "5.png"
+    elif value >= 70:
+      image = "6.png"
+    else:
+      image = "50.png"
 
-    print "Generating ", data_filename
-    self.generate_data(data_filename)
+    return "img/" + image
 
-    print "Generating ", glue_filename
-    self.generate_glue(glue_filename)
-
-    print "Generating ", html_filename
-    self.generate_html(html_filename, data_filename, glue_filename)
-
-  def generate_data(self, filename):
-    file = open(filename, "w")
-    self.generate_data_begin(file)
-    self.generate_data_marker_begin(file)
-    for urn in self.cache:
-      item = self.cache[urn]
-      if (self.ks == 2):
-        metric = item["KS2_11.PTENGMATX"]
-      else:
-        metric = item["KS4_11.PTAC5EM"]
-      self.generate_data_marker(file, item, self.get_marker_icon(metric))
-    self.generate_data_marker_end(file)
-
-    self.generate_data_end(file)
-
-  def generate_data_marker(self, file, item, icon):
-    file.write('''
-        {
-          c :
-          {
-            position: new google.maps.LatLng(%f, %f),
-            map: map,
-            title: "%s",
-            icon: "%s"
-          },
-          d :
-          [
-''' % (item["loc_lat"], item["loc_lng"], item["L.SCHNAME"], icon))
-
-    for i in self.output_values:
-      value = ""
-      if i in item:
-        value = item[i]
-      else:
-        value = "No data"
-      file.write('''
-            {
-              name : "%s",
-              value : "%s"
-            },
-''' % (self.output_values[i], value))
-
-    file.write('''
-          ],
-        },
-''')
 
 
 
@@ -390,8 +380,8 @@ if option.ks == None:
   sys.exit(0)
 
 
-location = Location(option.location_map)
-schools = Schools(location, option.source_dir, option.output, option.ks)
+locations = Locations(option.location_map)
+schools = Schools(locations, option.source_dir, option.output, option.ks)
 schools.parse()
 schools.geocode()
 
