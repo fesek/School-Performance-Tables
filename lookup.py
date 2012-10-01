@@ -77,6 +77,7 @@ class Institutions:
       csv_in = csv.DictReader(open(filepath, "r"), delimiter = ',')
 
       for rec in csv_in:
+        # filer invalid entries
         if "L.POSTCODE" not in rec:
           continue
         if "L.URN" not in rec:
@@ -84,37 +85,127 @@ class Institutions:
         if len(rec["L.URN"]) == 0:
           continue
 
+        # create and populate entry
         urn = int(rec["L.URN"])
-        self.cache[urn] = {}
+        inst = {}
         for key in rec:
-          self.cache[urn][key] = rec[key]
+          inst[key] = rec[key]
 
-  def geocode(self):
-    for urn in self.cache:
-      inst = self.cache[urn];
-      postcode = inst["L.POSTCODE"]
+        # add location
+        postcode = inst["L.POSTCODE"]
+        loc = self.locations.lookup(postcode)
+        inst["loc_lat"] = loc["lat"]
+        inst["loc_lng"] = loc["lng"]
 
-      res = locations.lookup(postcode)
+        # set metric (used for icons later)
+        inst["__metric__"] = self.get_metric(inst)
+        inst["__icon__"] = self.get_icon(inst)
 
-  def generate_output(self):
-    data_filename = self.output + "_data.js"
-    html_filename = self.output + ".html"
-    glue_filename = self.output + ".js"
+        # add to cache
+        if (DEBUG):
+          print inst
+        self.cache[urn] = inst
 
-    print "Generating ", data_filename
-    self.generate_data(data_filename)
-    print "Generating ", glue_filename
-    self.generate_glue(glue_filename)
-    print "Generating ", html_filename
-    self.generate_html(html_filename, data_filename, glue_filename)
 
-  def generate_data(self, filename):
-    file = open(filename, "w")
+
+
+class Schools(Institutions):
+  def __init__(self, locations, sourcedir, ks):
+    Institutions.__init__(self, locations, sourcedir)
+    self.ks = ks
+    if (self.ks == 2):
+      self.output_values = ({
+        "L.URN" : "URN",
+        "L.RELDENOM" : "Denomination",
+        "KS2_11.TOTPUPS"  : "# Pupils",
+        "KS2_11.PTENGMATX" : "Level 4 in Math and English",
+        "ABS_11.PERCTOT"   : "Overall absence",
+        "CENSUS_11.TSENSAP" : "# Pupils on SEN or School Action Plus",
+        "CENSUS_11.PNUMEAL" : "% Pupils with English not as First Language",
+        "CENSUS_11.PNUMFSM" : "% Pupils on Free School Meals",
+        "SWF_11.RATPUPTEA" : "Pupil:Teacher Ratio",
+        "L.NFTYPE" : "School Type",
+      })
+    else:
+      self.output_values = ({
+        "L.URN" : "URN",
+        "L.RELDENOM" : "Denomination",
+        "KS4_11.TOTPUPS"  : "# Pupils",
+        "KS4_11.PTAC5EM" : "5+ A*-C GCSEs including English and maths",
+        "ABS_11.PERCTOT"   : "Overall absence",
+        "CENSUS_11.TSENSAP" : "# Pupils on SEN or School Action Plus",
+        "CENSUS_11.PNUMEAL" : "% Pupils with English not as First Language",
+        "CENSUS_11.PNUMFSM" : "% Pupils on Free School Meals",
+        "SWF_11.RATPUPTEA" : "Pupil:Teacher Ratio",
+        "L.NFTYPE" : "School Type",
+      })
+
+  def __del__(self):
+    Institutions.__del__(self)
+
+  def get_metric(self, inst):
+    if (self.ks == 2):
+      metric = string.replace(inst["KS2_11.PTENGMATX"], '%', '')
+      if len(metric) > 0 and metric != "SUPP":
+        return int(metric)
+      else:
+        return 0
+    else:
+      metric = string.replace(inst["KS4_11.PTAC5EM"], '%', '')
+      if len(metric) > 0 and metric != "SUPP" and metric != "NE":
+        return int(metric)
+      else:
+        return 0
+
+  def get_icon(self, inst):
+    value = inst["__metric__"]
+    image = ""
+    if value == 0:
+      image = "na.png"
+    elif value >= 95:
+      image = "1.png"
+    elif value >= 90:
+      image = "2.png"
+    elif value >= 85:
+      image = "3.png"
+    elif value >= 80:
+      image = "4.png"
+    elif value >= 75:
+      image = "5.png"
+    elif value >= 70:
+      image = "6.png"
+    else:
+      image = "50.png"
+
+    return "img/" + image
+
+  def generate_output(self, output):
+    output.generate(self.cache, self.output_values)
+
+
+class Output:
+  def __init__(self, output):
+    self.data_filename = output + "_data.js"
+    self.html_filename = output + ".html"
+    self.glue_filename = output + ".js"
+
+  def __del__(self):
+    pass
+
+  def generate(self, cache, output_values):
+    self.cache = cache
+    self.output_values = output_values
+    self.generate_data(cache)
+    self.generate_glue()
+    self.generate_html()
+
+  def generate_data(self, cache):
+    file = open(self.data_filename, "w")
     self.generate_data_begin(file)
     self.generate_data_marker_begin(file)
-    for urn in self.cache:
-      item = self.cache[urn]
-      self.generate_data_marker(file, item, self.get_marker_icon(item["__metric__"]))
+    for urn in cache:
+      item = cache[urn]
+      self.generate_data_marker(file, item, item["__icon__"])
     self.generate_data_marker_end(file)
     self.generate_data_end(file)
 
@@ -176,8 +267,8 @@ class Institutions:
   }
 ''')
 
-  def generate_glue(self, filename):
-    file = open(filename, "w")
+  def generate_glue(self):
+    file = open(self.glue_filename, "w")
     file.write('''
 
 // List of markers
@@ -234,8 +325,8 @@ function initialize()
 }
 ''')
 
-  def generate_html(self, filename, js1, js2):
-    file = open(filename, "w")
+  def generate_html(self):
+    file = open(self.html_filename, "w")
     file.write('''
 <!DOCTYPE html>
 <html>
@@ -264,90 +355,7 @@ function initialize()
   </body>
 </html>
 
-''' % (js1, js2))
-
-
-class Schools(Institutions):
-  def __init__(self, locations, sourcedir, output, ks):
-    Institutions.__init__(self, locations, sourcedir)
-    self.output = output
-    self.ks = ks
-    if (self.ks == 2):
-      self.output_values = ({
-        "L.URN" : "URN",
-        "L.RELDENOM" : "Denomination",
-        "KS2_11.TOTPUPS"  : "# Pupils",
-        "KS2_11.PTENGMATX" : "Level 4 in Math and English",
-        "ABS_11.PERCTOT"   : "Overall absence",
-        "CENSUS_11.TSENSAP" : "# Pupils on SEN or School Action Plus",
-        "CENSUS_11.PNUMEAL" : "% Pupils with English not as First Language",
-        "CENSUS_11.PNUMFSM" : "% Pupils on Free School Meals",
-        "SWF_11.RATPUPTEA" : "Pupil:Teacher Ratio",
-        "L.NFTYPE" : "School Type",
-      })
-    else:
-      self.output_values = ({
-        "L.URN" : "URN",
-        "L.RELDENOM" : "Denomination",
-        "KS4_11.TOTPUPS"  : "# Pupils",
-        "KS4_11.PTAC5EM" : "5+ A*-C GCSEs including English and maths",
-        "ABS_11.PERCTOT"   : "Overall absence",
-        "CENSUS_11.TSENSAP" : "# Pupils on SEN or School Action Plus",
-        "CENSUS_11.PNUMEAL" : "% Pupils with English not as First Language",
-        "CENSUS_11.PNUMFSM" : "% Pupils on Free School Meals",
-        "SWF_11.RATPUPTEA" : "Pupil:Teacher Ratio",
-        "L.NFTYPE" : "School Type",
-      })
-
-  def __del__(self):
-    Institutions.__del__(self)
-
-  def prepare_output(self):
-      # get coordinates from locations map and generate web output
-      for urn in self.cache:
-        school = self.cache[urn]
-        metric = 0
-        if (self.ks == 2):
-          metric = string.replace(school["KS2_11.PTENGMATX"], '%', '')
-          if len(metric) > 0 and metric != "SUPP":
-            metric = int(metric)
-          else:
-            metric = 0
-        else:
-          metric = string.replace(school["KS4_11.PTAC5EM"], '%', '')
-          if len(metric) > 0 and metric != "SUPP" and metric != "NE":
-            metric = int(metric)
-          else:
-            metric = 0
-        school["__metric__"] = metric
-
-        postcode = school["L.POSTCODE"]
-        loc = self.locations.lookup(postcode)
-        school["loc_lat"] = loc["lat"]
-        school["loc_lng"] = loc["lng"]
-        if (DEBUG):
-          print school
-
-  def get_marker_icon(self, value):
-    image = ""
-    if value == 0:
-      image = "na.png"
-    elif value >= 95:
-      image = "1.png"
-    elif value >= 90:
-      image = "2.png"
-    elif value >= 85:
-      image = "3.png"
-    elif value >= 80:
-      image = "4.png"
-    elif value >= 75:
-      image = "5.png"
-    elif value >= 70:
-      image = "6.png"
-    else:
-      image = "50.png"
-
-    return "img/" + image
+''' % (self.data_filename, self.glue_filename))
 
 
 
@@ -381,12 +389,11 @@ if option.ks == None:
 
 
 locations = Locations(option.location_map)
-schools = Schools(locations, option.source_dir, option.output, option.ks)
-schools.parse()
-schools.geocode()
 
-if not option.geocode_only:
-  schools.prepare_output()
-  schools.generate_output()
+schools = Schools(locations, option.source_dir, option.ks)
+schools.parse()
+
+output = Output(option.output)
+schools.generate_output(output)
 
 
