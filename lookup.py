@@ -14,10 +14,11 @@ LOCATION_DICT_CHANGED = False
 
 class Locations:
   def __init__(self, filename):
-    self.cache = {}
     self.filename = filename
     self.changed = False;
-    self.count = 0
+    self.throttle_count = 0
+
+    self.cache = {}
     if self.filename:
       try:
         self.cache = simplejson.load(open(self.filename, "r"))
@@ -25,7 +26,7 @@ class Locations:
         pass
 
   def __del__(self):
-    if self.filename:
+    if self.changed and self.filename:
       cache_file = open(self.filename, "w")
       simplejson.dump(self.cache, cache_file, indent = 2, sort_keys = True)
 
@@ -33,6 +34,13 @@ class Locations:
     if postcode in self.cache:
       return self.cache[postcode]
     else:
+      # throttling
+      self.throttle_count = self.throttle_count + 1
+      if self.throttle_count % 10 == 0:
+        print "timeout"
+        time.sleep(2)
+
+      # Request location
       self.changed = True
       print "Get location for " + postcode
       postcode = string.replace(postcode," ", "+")
@@ -48,12 +56,6 @@ class Locations:
       datajson = simplejson.loads(data)
       loc = datajson["results"][0]["geometry"]["location"]
       self.cache[postcode] = loc
-
-      # throttling
-      self.count = self.count + 1
-      if self.count % 10 == 0:
-        print "timeout"
-        time.sleep(2)
 
       return loc
 
@@ -77,7 +79,7 @@ class Institutions:
       csv_in = csv.DictReader(open(filepath, "r"), delimiter = ',')
 
       for rec in csv_in:
-        # filer invalid entries
+        # discard invalid entries
         if "L.POSTCODE" not in rec:
           continue
         if "L.URN" not in rec:
@@ -105,8 +107,6 @@ class Institutions:
         if (DEBUG):
           print inst
         self.cache[urn] = inst
-
-
 
 
 class Schools(Institutions):
@@ -179,7 +179,7 @@ class Schools(Institutions):
 
     return "img/" + image
 
-  def generate_output(self, output):
+  def write(self, output):
     output.generate(self.cache, self.output_values)
 
 
@@ -200,6 +200,7 @@ class Output:
     self.generate_html()
 
   def generate_data(self, cache):
+    print "Generating data file " + self.data_filename
     file = open(self.data_filename, "w")
     self.generate_data_begin(file)
     self.generate_data_marker_begin(file)
@@ -268,6 +269,7 @@ class Output:
 ''')
 
   def generate_glue(self):
+    print "Generating data file " + self.glue_filename
     file = open(self.glue_filename, "w")
     file.write('''
 
@@ -326,6 +328,7 @@ function initialize()
 ''')
 
   def generate_html(self):
+    print "Generating data file " + self.html_filename
     file = open(self.html_filename, "w")
     file.write('''
 <!DOCTYPE html>
@@ -363,7 +366,6 @@ function initialize()
 # main
 parser = OptionParser()
 parser.add_option("-d", "--source-dir", action="store", help="Director containing data file")
-parser.add_option("-g", "--geocode-only", action="store_true", help="Geocode postcodes and write to file")
 parser.add_option("-o", "--output", action="store", help="Filename to store results")
 parser.add_option("-l", "--location-map", action="store", help="Cached geo codes")
 parser.add_option("-k", "--ks", type="int", action="store", help="Key Stage 2 or 4")
@@ -380,9 +382,6 @@ if option.source_dir == None:
 if option.output == None:
   print "No output file given"
   sys.exit(0)
-if not option.geocode_only and option.location_map== None:
-  print "Neither geocoding option nor input file"
-  sys.exit(0)
 if option.ks == None:
   print "Key stage number missing"
   sys.exit(0)
@@ -394,6 +393,6 @@ schools = Schools(locations, option.source_dir, option.ks)
 schools.parse()
 
 output = Output(option.output)
-schools.generate_output(output)
+schools.write(output)
 
 
