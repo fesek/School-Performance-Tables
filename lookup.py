@@ -34,6 +34,8 @@ class Locations:
     if postcode in self.cache:
       return self.cache[postcode]
     else:
+      print "Postcode ", postcode, " not in cache"
+#      return { "lat": 51.412333, "lng": -0.048622}
       # throttling
       self.throttle_count = self.throttle_count + 1
       if self.throttle_count % 10 == 0:
@@ -43,9 +45,8 @@ class Locations:
       # Request location
       self.changed = True
       print "Get location for " + postcode
-      postcode = string.replace(postcode," ", "+")
       site = "maps.googleapis.com"
-      page = "/maps/api/geocode/json?address=" + postcode + ",+UK&sensor=false"
+      page = "/maps/api/geocode/json?address=" + postcode.replace(" ", "+") + ",+UK&sensor=false"
       url = site + page
 
       conn = httplib.HTTPConnection(site)
@@ -80,26 +81,24 @@ class Institutions:
 
       for rec in csv_in:
         # discard invalid entries
-        if "L.POSTCODE" not in rec:
-          continue
-        if "L.URN" not in rec:
-          continue
-        if len(rec["L.URN"]) == 0:
+        if not self.valid(rec):
           continue
 
         # create and populate entry
-        urn = int(rec["L.URN"])
         inst = {}
         for key in rec:
           inst[key] = rec[key]
 
+        urn = self.getUrn(inst)
+
         # add location
-        postcode = inst["L.POSTCODE"]
+        postcode = self.getPostcode(inst)
         loc = self.locations.lookup(postcode)
         inst["loc_lat"] = loc["lat"]
         inst["loc_lng"] = loc["lng"]
 
         # set metric (used for icons later)
+        inst["__name__"] = self.get_name(inst)
         inst["__metric__"] = self.get_metric(inst)
         inst["__icon__"] = self.get_icon(inst)
 
@@ -143,6 +142,24 @@ class Schools(Institutions):
   def __del__(self):
     Institutions.__del__(self)
 
+  def valid(self, rec):
+    if "L.POSTCODE" not in rec:
+      return False
+    if "L.URN" not in rec:
+      return False
+    if len(rec["L.URN"]) == 0:
+      return False
+    return True
+
+  def getUrn(self, inst):
+    return int(inst["L.URN"])
+
+  def getPostcode(self, inst):
+    return inst["L.POSTCODE"]
+
+  def get_name(self, inst):
+    return inst["L.SCHNAME"]
+
   def get_metric(self, inst):
     if (self.ks == 2):
       metric = string.replace(inst["KS2_11.PTENGMATX"], '%', '')
@@ -182,6 +199,80 @@ class Schools(Institutions):
   def write(self, output):
     output.generate(self.cache, self.output_values)
 
+class Nurseries(Institutions):
+  def __init__(self, locations, sourcedir, ks):
+    Institutions.__init__(self, locations, sourcedir)
+    self.ks = ks
+    self.output_values = ({
+      "Provider URN" : "URN",
+      "Provider Status" : "Status",
+      "Individual Register Combinations" : "Register",
+      "Provider Name" : "Name",
+      "Provider Address 1" : "Address 1",
+      "Provider Address 2" : "Address 2",
+      "Provider Address 3" : "Address 3",
+      "Provider Postcode1" : "Postcode",
+      "How well does the setting meet the needs of children in the Early Years Foundation Stage?" : "Setting",
+      "The capacity of the provision to maintain continuous improvement." : "continuous improvement",
+      "The effectiveness of leadership and management of the Early Years Foundation Stage" : "Leadership and management",
+      "The quality of provision in the Early Years Foundation Stage" : "Quality",
+      "Outcomes for children in the Early Years Foundation Stage" : "Outcomes",
+      "Quality of provision (CCR)" : "Compulsory requirements",
+      "Quality of provision (VCR)" : "Voluntary requirements",
+    })
+
+  def __del__(self):
+    Institutions.__del__(self)
+
+  def valid(self, rec):
+    if len(rec["Provider URN"]) == 0:
+      #print "skip " + rec["Provider URN"]
+      return False
+    if rec["Provider Postcode1"] == "RETN":
+      #print "skip " + rec["Provider Postcode1"]
+      return False
+    if rec["Provider Postcode1"] == "Redacted":
+      #print "skip " + rec["Provider Postcode1"]
+      return False
+#    if rec["Provider Address 3"] != "LONDON":
+      #print "skip " + rec["Provider Address 3"]
+#      return False
+    return True
+
+  def getUrn(self, inst):
+    return inst["Provider URN"]
+
+  def getPostcode(self, inst):
+    return inst["Provider Postcode1"]
+
+  def get_name(self, inst):
+    return inst["Provider Name"]
+
+  def get_metric(self, inst):
+    return inst["How well does the setting meet the needs of children in the Early Years Foundation Stage?"]
+
+  def get_icon(self, inst):
+    value = inst["__metric__"]
+    image = ""
+    if value == "1":
+      image = "na.png"
+    elif value == "2":
+      image = "1.png"
+    elif value == "2":
+      image = "2.png"
+    elif value == "3":
+      image = "3.png"
+    elif value == "4":
+      image = "4.png"
+    elif value == "5":
+      image = "5.png"
+    else:
+      image = "50.png"
+
+    return "img/" + image
+
+  def write(self, output):
+    output.generate(self.cache, self.output_values)
 
 class Output:
   def __init__(self, output):
@@ -199,12 +290,20 @@ class Output:
     self.generate_glue()
     self.generate_html()
 
+  def escape (self, value):
+    return value.replace('"', '\\"')
+
   def generate_data(self, cache):
     print "Generating data file " + self.data_filename
     file = open(self.data_filename, "w")
     self.generate_data_begin(file)
     self.generate_data_marker_begin(file)
+
+    count = 0
     for urn in cache:
+      count = count + 1
+#      if not (count >= 275 and count <= 278):
+#        continue
       item = cache[urn]
       self.generate_data_marker(file, item, item["__icon__"])
     self.generate_data_marker_end(file)
@@ -222,7 +321,7 @@ class Output:
           },
           d :
           [
-''' % (item["loc_lat"], item["loc_lng"], item["L.SCHNAME"], icon))
+''' % (item["loc_lat"], item["loc_lng"], self.escape(item["__name__"]), icon))
 
     for i in self.output_values:
       value = ""
@@ -235,7 +334,7 @@ class Output:
               name : "%s",
               value : "%s"
             },
-''' % (self.output_values[i], value))
+''' % (self.output_values[i], self.escape(value)))
 
     file.write('''
           ],
@@ -368,6 +467,7 @@ parser = OptionParser()
 parser.add_option("-d", "--source-dir", action="store", help="Director containing data file")
 parser.add_option("-o", "--output", action="store", help="Filename to store results")
 parser.add_option("-l", "--location-map", action="store", help="Cached geo codes")
+parser.add_option("-t", "--type", action="store", help="[s]chool or [n]ursery")
 parser.add_option("-k", "--ks", type="int", action="store", help="Key Stage 2 or 4")
 
 (option, args) = parser.parse_args()
@@ -382,17 +482,23 @@ if option.source_dir == None:
 if option.output == None:
   print "No output file given"
   sys.exit(0)
-if option.ks == None:
+if option.type == "s" and option.ks == None:
   print "Key stage number missing"
   sys.exit(0)
 
 
 locations = Locations(option.location_map)
 
-schools = Schools(locations, option.source_dir, option.ks)
-schools.parse()
+if option.type == "s":
+  print "Instantiate schools"
+  insts = Schools(locations, option.source_dir, option.ks)
+else:
+  print "Instantiate nurseries"
+  insts = Nurseries(locations, option.source_dir, option.ks)
+
+insts.parse()
 
 output = Output(option.output)
-schools.write(output)
+insts.write(output)
 
 
