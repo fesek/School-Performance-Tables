@@ -8,6 +8,7 @@ import simplejson
 import string
 import sys
 import time
+import re
 
 DEBUG = 0
 LOCATION_DICT_CHANGED = False
@@ -35,7 +36,6 @@ class Locations:
       return self.cache[postcode]
     else:
       print "Postcode ", postcode, " not in cache"
-#      return { "lat": 51.412333, "lng": -0.048622}
       # throttling
       self.throttle_count = self.throttle_count + 1
       if self.throttle_count % 10 == 0:
@@ -84,6 +84,9 @@ class Institutions:
         if not self.valid(rec):
           continue
 
+        if self.filter(rec):
+          continue
+
         # create and populate entry
         inst = {}
         for key in rec:
@@ -111,6 +114,7 @@ class Institutions:
 class Schools(Institutions):
   def __init__(self, locations, sourcedir, ks):
     Institutions.__init__(self, locations, sourcedir)
+    self.link = "http://www.education.gov.uk/cgi-bin/schools/performance/school.pl?urn="
     self.ks = ks
     if (self.ks == 2):
       self.output_values = ({
@@ -150,6 +154,9 @@ class Schools(Institutions):
     if len(rec["L.URN"]) == 0:
       return False
     return True
+
+  def filter(self, rec):
+    return False
 
   def getUrn(self, inst):
     return int(inst["L.URN"])
@@ -197,11 +204,12 @@ class Schools(Institutions):
     return "img/" + image
 
   def write(self, output):
-    output.generate(self.cache, self.output_values)
+    output.generate(self.cache, self.output_values, self.link)
 
 class Nurseries(Institutions):
   def __init__(self, locations, sourcedir, ks):
     Institutions.__init__(self, locations, sourcedir)
+    self.link = "http://www.ofsted.gov.uk/inspection-reports/find-inspection-report/provider/CARE/"
     self.ks = ks
     self.output_values = ({
       "Provider URN" : "URN",
@@ -234,10 +242,15 @@ class Nurseries(Institutions):
     if rec["Provider Postcode1"] == "Redacted":
       #print "skip " + rec["Provider Postcode1"]
       return False
-#    if rec["Provider Address 3"] != "LONDON":
-      #print "skip " + rec["Provider Address 3"]
-#      return False
     return True
+
+  def filter(self, rec):
+    postcode = self.getPostcode(rec)
+
+    # Limit to London
+    expression = "(EC|WC)|((NW|N|E|SE|SW|W)[\d]+) "
+    found = re.match(expression, postcode) != None
+    return not found
 
   def getUrn(self, inst):
     return inst["Provider URN"]
@@ -255,8 +268,6 @@ class Nurseries(Institutions):
     value = inst["__metric__"]
     image = ""
     if value == "1":
-      image = "na.png"
-    elif value == "2":
       image = "1.png"
     elif value == "2":
       image = "2.png"
@@ -267,12 +278,12 @@ class Nurseries(Institutions):
     elif value == "5":
       image = "5.png"
     else:
-      image = "50.png"
+      image = "na.png"
 
     return "img/" + image
 
   def write(self, output):
-    output.generate(self.cache, self.output_values)
+    output.generate(self.cache, self.output_values, self.link)
 
 class Output:
   def __init__(self, output):
@@ -283,9 +294,11 @@ class Output:
   def __del__(self):
     pass
 
-  def generate(self, cache, output_values):
+  def generate(self, cache, output_values, link):
     self.cache = cache
     self.output_values = output_values
+    self.link = link
+
     self.generate_data(cache)
     self.generate_glue()
     self.generate_html()
@@ -302,8 +315,6 @@ class Output:
     count = 0
     for urn in cache:
       count = count + 1
-#      if not (count >= 275 and count <= 278):
-#        continue
       item = cache[urn]
       self.generate_data_marker(file, item, item["__icon__"])
     self.generate_data_marker_end(file)
@@ -413,7 +424,7 @@ function initialize()
       {
         item = data[i]
         if (item["name"] == "URN")
-          content += "<tr><td>Link</td><td><a href='http://www.education.gov.uk/cgi-bin/schools/performance/school.pl?urn=" + item["value"] + "'>" + item["value"] + "</a></td></tr>"
+          content += "<tr><td>Link</td><td><a href='%s" + item["value"] + "'>" + item["value"] + "</a></td></tr>"
 	else
           content += "<tr><td>" + item["name"] + "</td><td>" + item["value"] + "</td></tr>";
       }
@@ -424,7 +435,7 @@ function initialize()
     });
   }
 }
-''')
+''' % (self.link))
 
   def generate_html(self):
     print "Generating data file " + self.html_filename
