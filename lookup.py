@@ -105,6 +105,9 @@ class Institutions:
         inst["__metric__"] = self.get_metric(inst)
         inst["__icon__"] = self.get_icon(inst)
 
+        if self.filterMetric(inst):
+          continue
+
         # add to cache
         if (DEBUG):
           print inst
@@ -157,6 +160,9 @@ class Schools(Institutions):
 
   def filter(self, rec):
     return False
+
+  def filterMetric(self, rec):
+    return rec["__metric__"] < 90
 
   def getUrn(self, inst):
     return int(inst["L.URN"])
@@ -220,11 +226,23 @@ class Nurseries(Institutions):
       "Provider Address 2" : "Address 2",
       "Provider Address 3" : "Address 3",
       "Provider Postcode1" : "Postcode",
-      "How well does the setting meet the needs of children in the Early Years Foundation Stage?" : "Setting",
-      "The capacity of the provision to maintain continuous improvement." : "continuous improvement",
+      "How well does the setting meet the needs of children in the Early Years Foundation Stage?" : "Meet Needs",
+      "The capacity of the provision to maintain continuous improvement." : "Continuous Improvement",
       "The effectiveness of leadership and management of the Early Years Foundation Stage" : "Leadership and management",
+      "The effectiveness of leadership and management in embedding ambition and driving improvement" : "Embedding Ambition and Driving Improvement",
+      "The effectiveness with which the setting deploys resources" : "Deploy Resources",
+      "The effectiveness with which the setting promotes equality and diversity" : "Equality and Diversity",
+      "The effectiveness of safeguarding" : "Safeguarding",
+      "The effectiveness of partnerships" : "Partnerships",
       "The quality of provision in the Early Years Foundation Stage" : "Quality",
+      "How effectively are children in the Early Years Foundation Stage helped to learn and develop?" : "Learn and Develop",
+      "How effectively is the welfare of children in the Early Years Foundation Stage promoted?" : "Welfare",
       "Outcomes for children in the Early Years Foundation Stage" : "Outcomes",
+      "The extent to which children achieve and enjoy their learning" : "Enjoy Learning",
+      "The extent to which children feel safe" : "Feel Safe",
+      "The extent to which children adopt healthy lifestyles" : "Haelthy Lifestyle",
+      "The extent to which children make a positive contribution" : "Children Psoitive Contribution",
+      "The extent to which children develop skills for the future" : "Children Develop Skills",
       "Quality of provision (CCR)" : "Compulsory requirements",
       "Quality of provision (VCR)" : "Voluntary requirements",
     })
@@ -242,6 +260,10 @@ class Nurseries(Institutions):
     if rec["Provider Postcode1"] == "Redacted":
       #print "skip " + rec["Provider Postcode1"]
       return False
+    if rec["Provider Status"] == "Resigned":
+      return False
+#    if rec["Provider Status"] == "Cancelled":
+#      return False
     return True
 
   def filter(self, rec):
@@ -251,6 +273,9 @@ class Nurseries(Institutions):
     expression = "(EC|WC)|((NW|N|E|SE|SW|W)[\d]+) "
     found = re.match(expression, postcode) != None
     return not found
+
+  def filterMetric(self, rec):
+    return int(rec["__metric__"]) > 2
 
   def getUrn(self, inst):
     return inst["Provider URN"]
@@ -355,7 +380,7 @@ class Output:
 
   def generate_data_begin(self, file):
     file.write('''
-  function build_array(map)
+  function build_inst_array(map)
   {
   ''')
 
@@ -408,7 +433,7 @@ function initialize()
   // Setup singleton info window for all markers
   g_infoWindow = new google.maps.InfoWindow({ });
 
-  g_markers = build_array(map);
+  g_markers = build_inst_array(map);
 
   for (i in g_markers)
   {
@@ -434,6 +459,15 @@ function initialize()
       g_infoWindow.open(map, this);
     });
   }
+
+  g_stations = build_station_array(map);
+
+  for (i in g_stations)
+  {
+    var item = g_stations[i];
+    var marker = new google.maps.Marker(item);
+  }
+
 }
 ''' % (self.link))
 
@@ -456,6 +490,10 @@ function initialize()
 
     <script type="text/javascript"
       src="./%s">
+    </script>
+
+    <script type="text/javascript"
+      src="./stations.js">
     </script>
 
     <script type="text/javascript"
