@@ -1,0 +1,57 @@
+
+<Config>
+  <Fundamentals>
+    <FieldURN>URN</FieldURN>
+    <FieldPostcode>PCODE</FieldPostcode>
+    <FieldName>SCHNAME</FieldName>
+  </Fundamentals>
+
+  <Metric>
+    <Field>PTENGXTA</Field>
+    <Invalids>
+      <Invalid>SUPP</Invalid>
+      <Invalid>NE</Invalid>
+    </Invalids>
+    <MetricRanges>
+      <MetricRange>
+        <Upper>100</Upper>
+        <Lower>95</Lower>
+        <Grade>1</Grade>
+      </MetricRange>
+      <MetricRange>
+        <Upper>95</Upper>
+        <Lower>90</Lower>
+        <Grade>1</Grade>
+      </MetricRange>
+      <MetricRange>
+        <Upper>90</Upper>
+        <Lower>85</Lower>
+        <Grade>1</Grade>
+      </MetricRange>
+    </MetricRanges>
+    <MinGrade>4</MinGrade>
+  </Metric>
+
+  <Filters>
+    <Filter>
+      <Field>PCODE</Field>
+      <Relation>
+        <RelationString>==</RelationString>
+      </Relation>
+      <Value>^AL</Value>
+    </Filter>
+  </Filters>
+
+  <OutputValues>
+    <Value>
+      <Field>SCHNAME</Field>
+      <Description>School Name</Description>
+    </Value>
+    <Value>
+      <Field>PCODE</Field>
+      <Description>Post Code</Description>
+    </Value>
+  </OutputValues>
+
+  <LocationFile>locations.json</LocationFile>
+</Config>

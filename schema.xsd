@@ -1,0 +1,114 @@
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+<xsd:element name="Config" type="Config" />
+
+<xsd:complexType name="Config">
+  <xsd:sequence>
+    <xsd:element name="Fundamentals" type="Fundamentals" />
+    <xsd:element name="Metric" type="Metric" />
+    <xsd:element name="Filters" type="Filters" />
+    <xsd:element name="OutputValues" type="OutputValues" />
+    <xsd:element name="LocationFile" type="xsd:string" />
+  </xsd:sequence>
+</xsd:complexType>
+
+<xsd:complexType name="Fundamentals">
+  <xsd:sequence>
+    <xsd:element name="FieldURN" type="xsd:string" />
+    <xsd:element name="FieldPostcode" type="xsd:string" />
+    <xsd:element name="FieldName" type="xsd:string" />
+  </xsd:sequence>
+</xsd:complexType>
+
+
+<xsd:simpleType name="Grade">
+ <xsd:restriction base="xsd:integer">
+    <xsd:minInclusive value="1"/>
+    <xsd:maxInclusive value="6"/>
+  </xsd:restriction>
+</xsd:simpleType>
+
+<xsd:complexType name="MetricRanges">
+  <xsd:sequence>
+    <xsd:element name="MetricRange" type="MetricRange" minOccurs="1" maxOccurs="unbounded" />
+  </xsd:sequence>
+</xsd:complexType>
+
+<xsd:complexType name="MetricRange">
+  <xsd:sequence>
+    <xsd:element name="Upper" type="xsd:string" />
+    <xsd:element name="Lower" type="xsd:string" />
+    <xsd:element name="Grade" type="Grade" />
+  </xsd:sequence>
+</xsd:complexType>
+
+<xsd:complexType name="Invalids">
+  <xsd:sequence>
+    <xsd:element name="Invalid" type="xsd:string" minOccurs="0" maxOccurs="unbounded" />
+  </xsd:sequence>
+</xsd:complexType>
+
+<xsd:complexType name="Metric">
+  <xsd:sequence>
+    <xsd:element name="Field" type="xsd:string" />
+    <xsd:element name="Invalids" type="Invalids" />
+    <xsd:element name="MetricRanges" type="MetricRanges" />
+    <xsd:element name="MinGrade" type="Grade" />
+  </xsd:sequence>
+</xsd:complexType>
+
+
+<xsd:simpleType name="RelationSimple">
+ <xsd:restriction base="xsd:string">
+    <xsd:enumeration value="=="/>
+    <xsd:enumeration value="!="/>
+    <xsd:enumeration value="&lt;"/>
+    <xsd:enumeration value="&lt;="/>
+    <xsd:enumeration value="&gt;"/>
+    <xsd:enumeration value="&gt;="/>
+  </xsd:restriction>
+</xsd:simpleType>
+
+<xsd:simpleType name="RelationReqexp">
+ <xsd:restriction base="xsd:string">
+    <xsd:enumeration value="=="/>
+    <xsd:enumeration value="!="/>
+  </xsd:restriction>
+</xsd:simpleType>
+
+<xsd:complexType name="Relation">
+  <xsd:choice>
+    <xsd:element name="RelationString" type="RelationSimple" />
+    <xsd:element name="RelationNumeric" type="RelationSimple" />
+    <xsd:element name="RelationRegexp" type="RelationRegexp" />
+  </xsd:choice>
+</xsd:complexType>
+
+<xsd:complexType name="Filters">
+  <xsd:sequence>
+    <xsd:element name="Filter" type="Filter" minOccurs="0" maxOccurs="unbounded" />
+  </xsd:sequence>
+</xsd:complexType>
+
+<xsd:complexType name="Filter">
+  <xsd:sequence>
+    <xsd:element name="Field" type="xsd:string" />
+    <xsd:element name="Relation" type="Relation" />
+    <xsd:element name="Value" type="xsd:string" />
+  </xsd:sequence>
+</xsd:complexType>
+
+<xsd:complexType name="OutputValues">
+  <xsd:sequence>
+    <xsd:element name="Value" type="Value" minOccurs="0" maxOccurs="unbounded" />
+  </xsd:sequence>
+</xsd:complexType>
+
+<xsd:complexType name="Value">
+  <xsd:sequence>
+    <xsd:element name="Field" type="xsd:string" />
+    <xsd:element name="Description" type="xsd:string" />
+  </xsd:sequence>
+</xsd:complexType>
+
+</xsd:schema>
