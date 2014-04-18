@@ -1,4 +1,4 @@
-* Latest stable version is 6d30b79d97 in conjunction with 2012 data set. I am currently refactoring the logic to separate out code and data. *
+**Latest stable version is 6d30b79d97 in conjunction with 2012 data set. I am currently refactoring the logic to separate out code and data.**
 
 Script parsing school performance data available from the UK's Department of Education's website and mapping the results using Google Maps.
 
@@ -15,20 +15,20 @@ Sample invocation (with KS2 data files):
 
 
 Files:
- * lookup.py
- **  Actual script
- * london_ks2.html
- ** simple webpage including generated JS
- * london_ks2_data.js
- ** JSON objects representing school data
- * london_ks2.js
- ** Basic Javscript code instantiating the data and Google Maps
- * location_map
- ** pre-built cache of London's schools' postcodes
+* lookup.py
+  *  Actual script
+* london_ks2.html
+  * simple webpage including generated JS
+* london_ks2_data.js
+  * JSON objects representing school data
+* london_ks2.js
+  * Basic Javscript code instantiating the data and Google Maps
+* location_map
+  * pre-built cache of London's schools' postcodes
   
 
 Links:
- * Data files
- ** http://www.education.gov.uk/schools/performance/download_data.html
- * Homepage Department of Education - School Performance
- ** http://www.education.gov.uk/schools/performance/
+* Data files
+  * http://www.education.gov.uk/schools/performance/download_data.html
+* Homepage Department of Education - School Performance
+  * http://www.education.gov.uk/schools/performance/
